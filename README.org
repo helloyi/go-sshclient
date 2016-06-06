@@ -1,15 +1,10 @@
 #+TITLE: simple sshclient with golang
+#+OPTIONS: toc:2
 
 This package implemented a ssh client. It can run remote command, execute
 remote script, request terminal and request non-interactive shell simply.
 
-* table of Contents
-1. [[createClient][Create a ssh client]]
-2. [[runCommand][Run command]]
-3. [[runScript][Run script]]
-4. [[getShell][Get a shell]]
-
-* <<createClient>>create a ssh client
+* create a ssh client
 + Dial with passwd
 #+BEGIN_SRC golang
 client, err := DialWithPasswd("host:port", "username", "passwd")
@@ -43,7 +38,7 @@ if err != nil {
 defer client.Close()
 #+END_SRC
 
-* <<runCommand>>execute commmand
+* execute commmand
 + Don't care about output, calling Run
 #+BEGIN_SRC go
 // run one command
@@ -94,7 +89,7 @@ fmt.Println(string(stdout))
 fmt.Println(string(stderr))
 #+END_SRC
 
-* <<runScript>>execute script
+* execute script
 + Run script
 #+BEGIN_SRC go
 script = `
@@ -115,7 +110,7 @@ client.ScriptFile("/path/to/the/script").Output()
 client.ScriptFile("/path/to/the/script").SmartOutput()
 #+END_SRC
 
-* <<getShell>>get shell
+* get shell
 + Get a non-interactive shell
 #+BEGIN_SRC go
 if err := client.Shell().Start(); err != nil {
