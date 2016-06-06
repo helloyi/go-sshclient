@@ -3,7 +3,14 @@
 This package implemented a ssh client. It can run remote command, execute
 remote script, request terminal and request non-interactive shell simply.
 
+* table of Contents
+1. [[CreateClient][Create a ssh client]]
+2. [[RunCmd][Run command]]
+3. [[RunScript][Run script]]
+4. [[GetShell][Get a shell]]
+
 * create a ssh client
+#<<CreateClient>>
 + Dial with passwd
 #+BEGIN_SRC golang
 client, err := DialWithPasswd("host:port", "username", "passwd")
@@ -14,7 +21,7 @@ defer client.Close()
 #+END_SRC
 
 + Dial with private key
-#+BEGIN_SRC golang
+#+BEGIN_SRC go
 client, err := DialWithKey("host:port", "username", "prikeyFile")
 if err != nil {
   handleErr(err)
@@ -23,7 +30,7 @@ defer client.Close()
 #+END_SRC
 
 + Dia
-#+BEGIN_SRC 
+#+BEGIN_SRC go
 config := &ssh.ClientConfig{
 	User: user,
 	Auth: []ssh.AuthMethod{
@@ -38,8 +45,9 @@ defer client.Close()
 #+END_SRC
 
 * execute commmand
+#<<RunCmd>>
 + Don't care about output, calling Run
-#+BEGIN_SRC golang
+#+BEGIN_SRC go
 // run one command
 if err := client.Cmd("cmd").Run(); err {
   handleErr(err)
@@ -53,7 +61,7 @@ if err := client.Cmd("cmd1").Cmd("cmd2").Cmd("cmd3").Run(); err != nil {
 #+END_SRC
 
 + Get output, calling Output
-#+BEGIN_SRC golang
+#+BEGIN_SRC go
 out, err := client.Cmd("cmd").Output()
 if err != nil {
   handleErr(err)
@@ -62,7 +70,7 @@ fmt.Println(string(out))
 #+END_SRC
 
 + Return stderr message, when execution error, calling SmartOutput
-#+BEGIN_SRC golang
+#+BEGIN_SRC go
 out, err := client.Cmd("cmd").SmartOutput()
 if err != nil {
   // the 'out' is stderr output
@@ -73,7 +81,7 @@ fmt.Println(string(out))
 #+END_SRC
 
 + Write stdout and stderr to your buffer, calling SetStdio
-#+BEGIN_SRC golang
+#+BEGIN_SRC go
 var (
   stdout bytes.Buffer
   stderr bytes.Buffer
@@ -89,8 +97,9 @@ fmt.Println(string(stderr))
 #+END_SRC
 
 * execute script
+#<<RunScript>>
 + Run script
-#+BEGIN_SRC golang
+#+BEGIN_SRC go
 script = `
   statment1
   statment2
@@ -103,22 +112,23 @@ client.Script(script).SmartOutput()
 #+END_SRC
 
 + Run a shell script file
-#+BEGIN_SRC golang
+#+BEGIN_SRC go
 client.ScriptFile("/path/to/the/script").Run()
 client.ScriptFile("/path/to/the/script").Output()
 client.ScriptFile("/path/to/the/script").SmartOutput()
 #+END_SRC
 
 * get shell
+#<<GetShell>>
 + Get a non-interactive shell
-#+BEGIN_SRC golang
+#+BEGIN_SRC go
 if err := client.Shell().Start(); err != nil {
   handleErr(err)
 }
 #+END_SRC
 
 + Get a interactive shell
-#+BEGIN_SRC 
+#+BEGIN_SRC go
 // default terminal
 if err := client.Terminal(nil).Start(); err != nil {
   handleErr(err)
@@ -140,7 +150,7 @@ if err := client.Terminal(config).Start(); err != nil {
 #+END_SRC
 
 + And sometimes, you could set your stdio buffer
-#+BEGIN_SRC golang
+#+BEGIN_SRC go
 var (
   stdin  bytes.Buffer
   stdout bytes.Buffer
