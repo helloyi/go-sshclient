@@ -9,6 +9,7 @@ import (
 	"io"
 	"io/ioutil"
 	"os"
+	"net"
 )
 
 type remoteScriptType byte
