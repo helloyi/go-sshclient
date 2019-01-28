@@ -5,11 +5,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"golang.org/x/crypto/ssh"
 	"io"
 	"io/ioutil"
-	"os"
 	"net"
+	"os"
+
+	"golang.org/x/crypto/ssh"
 )
 
 type remoteScriptType byte
@@ -35,6 +36,7 @@ func DialWithPasswd(addr, user, passwd string) (*Client, error) {
 		Auth: []ssh.AuthMethod{
 			ssh.Password(passwd),
 		},
+		HostKeyCallback: ssh.HostKeyCallback(func(hostname string, remote net.Addr, key ssh.PublicKey) error { return nil }),
 	}
 
 	return Dial("tcp", addr, config)
