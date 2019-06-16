@@ -65,6 +65,29 @@ func DialWithKey(addr, user, keyfile string) (*Client, error) {
 	return Dial("tcp", addr, config)
 }
 
+// DialWithKeyWithPassphrase same as DialWithKey but with a passphrase to decrypt the private key
+func DialWithKeyWithPassphrase(addr, user, keyfile string, passphrase []byte) (*Client, error) {
+	key, err := ioutil.ReadFile(keyfile)
+	if err != nil {
+		return nil, err
+	}
+
+	signer, err := ssh.ParsePrivateKeyWithPassphrase(key, passphrase)
+	if err != nil {
+		return nil, err
+	}
+
+	config := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.HostKeyCallback(func(hostname string, remote net.Addr, key ssh.PublicKey) error { return nil }),
+	}
+
+	return Dial("tcp", addr, config)
+}
+
 // Dial starts a client connection to the given SSH server.
 // This is wrap the ssh.Dial
 func Dial(network, addr string, config *ssh.ClientConfig) (*Client, error) {
