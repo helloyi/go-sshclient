@@ -25,7 +25,7 @@ defer client.Close()
 
 + Dial with private key and a passphrase to decrypt the key
 #+BEGIN_SRC go
-client, err := DialWithKeyWithPassphrase("host:port", "username", "prikeyFile", []byte("my-passphrase"))
+client, err := DialWithKeyWithPassphrase("host:port", "username", "prikeyFile", "my-passphrase"))
 if err != nil {
   handleErr(err)
 }

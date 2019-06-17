@@ -66,13 +66,13 @@ func DialWithKey(addr, user, keyfile string) (*Client, error) {
 }
 
 // DialWithKeyWithPassphrase same as DialWithKey but with a passphrase to decrypt the private key
-func DialWithKeyWithPassphrase(addr, user, keyfile string, passphrase []byte) (*Client, error) {
+func DialWithKeyWithPassphrase(addr, user, keyfile string, passphrase string) (*Client, error) {
 	key, err := ioutil.ReadFile(keyfile)
 	if err != nil {
 		return nil, err
 	}
 
-	signer, err := ssh.ParsePrivateKeyWithPassphrase(key, passphrase)
+	signer, err := ssh.ParsePrivateKeyWithPassphrase(key, []byte(passphrase))
 	if err != nil {
 		return nil, err
 	}
