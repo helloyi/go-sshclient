@@ -286,7 +286,7 @@ type remoteShell struct {
 
 type TerminalConfig struct {
 	Term   string
-	Hight  int
+	Height int
 	Weight int
 	Modes  ssh.TerminalModes
 }
@@ -344,11 +344,11 @@ func (rs *remoteShell) Start() error {
 		if tc == nil {
 			tc = &TerminalConfig{
 				Term:   "xterm",
-				Hight:  40,
+				Height: 40,
 				Weight: 80,
 			}
 		}
-		if err := session.RequestPty(tc.Term, tc.Hight, tc.Weight, tc.Modes); err != nil {
+		if err := session.RequestPty(tc.Term, tc.Height, tc.Weight, tc.Modes); err != nil {
 			return err
 		}
 	}
