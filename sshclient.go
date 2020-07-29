@@ -265,6 +265,7 @@ func (rs *remoteScript) runScriptFile() error {
 	if err != nil {
 		return err
 	}
+	defer file.Close()
 	_, err = io.Copy(&buffer, file)
 	if err != nil {
 		return err
