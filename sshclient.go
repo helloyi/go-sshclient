@@ -106,6 +106,11 @@ func (c *Client) Close() error {
 	return c.client.Close()
 }
 
+// Close closes the underlying client network connection.
+func (c *Client) NativeClient() *ssh.Client {
+	return c.client
+}
+
 // Cmd creates a RemoteScript that can run the command on the client. The cmd string is split on newlines and each line is executed separately.
 func (c *Client) Cmd(cmd string) *RemoteScript {
 	return &RemoteScript{
