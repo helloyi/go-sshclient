@@ -106,8 +106,8 @@ func (c *Client) Close() error {
 	return c.client.Close()
 }
 
-// Close closes the underlying client network connection.
-func (c *Client) NativeClient() *ssh.Client {
+// UnderlyingClient get the underlying client network connection.
+func (c *Client) UnderlyingClient() *ssh.Client {
 	return c.client
 }
 
