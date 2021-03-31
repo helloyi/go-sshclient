@@ -106,6 +106,11 @@ func (c *Client) Close() error {
 	return c.client.Close()
 }
 
+// UnderlyingClient get the underlying client.
+func (c *Client) UnderlyingClient() *ssh.Client {
+	return c.client
+}
+
 // Cmd creates a RemoteScript that can run the command on the client. The cmd string is split on newlines and each line is executed separately.
 func (c *Client) Cmd(cmd string) *RemoteScript {
 	return &RemoteScript{
