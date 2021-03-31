@@ -106,7 +106,7 @@ func (c *Client) Close() error {
 	return c.client.Close()
 }
 
-// UnderlyingClient get the underlying client network connection.
+// UnderlyingClient get the underlying client.
 func (c *Client) UnderlyingClient() *ssh.Client {
 	return c.client
 }
