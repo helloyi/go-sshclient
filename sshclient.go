@@ -5,12 +5,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"github.com/bramvdbogaerde/go-scp"
+	"golang.org/x/crypto/ssh"
 	"io"
 	"io/ioutil"
 	"net"
 	"os"
-
-	"golang.org/x/crypto/ssh"
 )
 
 type remoteScriptType byte
@@ -28,6 +28,27 @@ const (
 // A Client implements an SSH client that supports running commands and scripts remotely.
 type Client struct {
 	client *ssh.Client
+}
+
+func (c *Client) GetClient() *ssh.Client {
+	return c.client
+}
+
+func (c *Client) CopyFile(file io.Reader, dest, perm string) error {
+	client, err := scp.NewClientBySSH(c.client)
+	if err != nil {
+		return err
+	}
+
+	client.Connect()
+
+	err = client.CopyFile(file, dest, perm)
+	if err != nil {
+		return err
+	}
+
+	client.Close()
+	return nil
 }
 
 // DialWithPasswd starts a client connection to the given SSH server with passwd authmethod.
