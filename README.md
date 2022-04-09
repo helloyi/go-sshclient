@@ -5,6 +5,15 @@
 This package implemented a ssh client. It can run remote command, execute
 remote script, request terminal and request non-interactive shell simply.
 
+## install package
+
+```shell
+# The -u flag instructs get to update modules providing dependencies
+# of packages named on the command line to use newer minor or patch
+# releases when available.
+go get -u github.com/helloyi/go-sshclient
+```
+
 ## create a ssh client
 
 + Dial with passwd
