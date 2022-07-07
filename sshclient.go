@@ -111,6 +111,23 @@ func (c *Client) UnderlyingClient() *ssh.Client {
 	return c.client
 }
 
+// Dial initiates a Client to the addr from the remote host.
+func (c *Client) Dial(network, addr string, config *ssh.ClientConfig) (*Client, error) {
+	conn, err := c.client.Dial(network, addr)
+	if err != nil {
+		return nil, err
+	}
+
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
+	if err != nil {
+		return nil, err
+	}
+
+	client := ssh.NewClient(sshConn, chans, reqs)
+
+	return &Client{client: client}, nil
+}
+
 // Cmd creates a RemoteScript that can run the command on the client. The cmd string is split on newlines and each line is executed separately.
 func (c *Client) Cmd(cmd string) *RemoteScript {
 	return &RemoteScript{
