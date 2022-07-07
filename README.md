@@ -46,7 +46,7 @@ if err != nil {
 defer client.Close()
 ```
 
-+ Dia
++ Dial
 
 ```go
 config := &ssh.ClientConfig{
@@ -56,6 +56,24 @@ config := &ssh.ClientConfig{
 	},
 }
 client, err := Dial("network", "host:port", config)
+if err != nil {
+  handleErr(err)
+}
+defer client.Close()
+```
+
++ Dial from remote host
+
+[To PR](https://github.com/helloyi/go-sshclient/pull/13)
+
+```go
+client0, err := Dial("tcp", "host:port", config{})
+if err != nil {
+  handleErr(err)
+}
+defer client0.Close()
+
+client, err := client0.Dail("tcp", "host:port", config{})
 if err != nil {
   handleErr(err)
 }
