@@ -9,7 +9,11 @@ import (
 	"io/ioutil"
 	"net"
 	"os"
+	"sync"
+	"time"
 
+	"github.com/kr/fs"
+	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
 )
 
@@ -27,7 +31,8 @@ const (
 
 // A Client implements an SSH client that supports running commands and scripts remotely.
 type Client struct {
-	client *ssh.Client
+	sshClient    *ssh.Client
+	sftpSessions sync.Map
 }
 
 // DialWithPasswd starts a client connection to the given SSH server with passwd authmethod.
@@ -92,28 +97,34 @@ func DialWithKeyWithPassphrase(addr, user, keyfile string, passphrase string) (*
 // Dial starts a client connection to the given SSH server.
 // This wraps ssh.Dial.
 func Dial(network, addr string, config *ssh.ClientConfig) (*Client, error) {
-	client, err := ssh.Dial(network, addr, config)
+	sshClient, err := ssh.Dial(network, addr, config)
 	if err != nil {
 		return nil, err
 	}
-	return &Client{
-		client: client,
-	}, nil
+
+	return &Client{sshClient: sshClient}, nil
 }
 
 // Close closes the underlying client network connection.
 func (c *Client) Close() error {
-	return c.client.Close()
+	merr := newMultiError()
+	c.sftpSessions.Range(func(key, value interface{}) bool {
+		err := value.(*RemoteFileSystem).Close()
+		merr.Append(err)
+		return true
+	})
+	merr.Append(c.sshClient.Close())
+	return merr.ErrorOrNil()
 }
 
 // UnderlyingClient get the underlying client.
 func (c *Client) UnderlyingClient() *ssh.Client {
-	return c.client
+	return c.sshClient
 }
 
 // Dial initiates a Client to the addr from the remote host.
 func (c *Client) Dial(network, addr string, config *ssh.ClientConfig) (*Client, error) {
-	conn, err := c.client.Dial(network, addr)
+	conn, err := c.sshClient.Dial(network, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -125,14 +136,14 @@ func (c *Client) Dial(network, addr string, config *ssh.ClientConfig) (*Client, 
 
 	client := ssh.NewClient(sshConn, chans, reqs)
 
-	return &Client{client: client}, nil
+	return &Client{sshClient: client}, nil
 }
 
 // Cmd creates a RemoteScript that can run the command on the client. The cmd string is split on newlines and each line is executed separately.
 func (c *Client) Cmd(cmd string) *RemoteScript {
 	return &RemoteScript{
 		_type:  cmdLine,
-		client: c.client,
+		client: c.sshClient,
 		script: bytes.NewBufferString(cmd + "\n"),
 	}
 }
@@ -141,7 +152,7 @@ func (c *Client) Cmd(cmd string) *RemoteScript {
 func (c *Client) Script(script string) *RemoteScript {
 	return &RemoteScript{
 		_type:  rawScript,
-		client: c.client,
+		client: c.sshClient,
 		script: bytes.NewBufferString(script + "\n"),
 	}
 }
@@ -150,7 +161,7 @@ func (c *Client) Script(script string) *RemoteScript {
 func (c *Client) ScriptFile(fname string) *RemoteScript {
 	return &RemoteScript{
 		_type:      scriptFile,
-		client:     c.client,
+		client:     c.sshClient,
 		scriptFile: fname,
 	}
 }
@@ -174,7 +185,7 @@ type RemoteScript struct {
 // status.
 func (rs *RemoteScript) Run() error {
 	if rs.err != nil {
-		fmt.Println(rs.err)
+		fmt.Println(rs.err) // TODO
 		return rs.err
 	}
 
@@ -330,7 +341,7 @@ type TerminalConfig struct {
 // Terminal create a interactive shell on client.
 func (c *Client) Terminal(config *TerminalConfig) *RemoteShell {
 	return &RemoteShell{
-		client:         c.client,
+		client:         c.sshClient,
 		terminalConfig: config,
 		requestPty:     true,
 	}
@@ -339,7 +350,7 @@ func (c *Client) Terminal(config *TerminalConfig) *RemoteShell {
 // Shell create a noninteractive shell on client.
 func (c *Client) Shell() *RemoteShell {
 	return &RemoteShell{
-		client:     c.client,
+		client:     c.sshClient,
 		requestPty: false,
 	}
 }
@@ -399,4 +410,383 @@ func (rs *RemoteShell) Start() error {
 	}
 
 	return nil
+}
+
+// RemoteFileSystem represents a remoote file system.
+type RemoteFileSystem struct {
+	sftp *sftp.Client
+	err  error
+
+	config remoteFileSystemConfig
+	opts   []sftp.ClientOption
+
+	cli *Client
+}
+
+// RemoteFile represents a remote file.
+type RemoteFile struct {
+	*sftp.File
+}
+
+// Sftp creates a new SFTP session, using zero or more option functions.
+func (c *Client) Sftp(opts ...SftpOption) *RemoteFileSystem {
+	config := remoteFileSystemConfig{-1, -1, -1, -1, -1}
+	for _, opt := range opts {
+		opt(&config)
+	}
+
+	rawRfs, ok := c.sftpSessions.Load(config)
+	if ok {
+		return rawRfs.(*RemoteFileSystem)
+	}
+
+	sftpClient, err := sftp.NewClient(c.sshClient, config.sftpClientOptions()...)
+	rfs := &RemoteFileSystem{
+		sftp: sftpClient,
+		err:  err,
+	}
+
+	if rfs.err == nil {
+		c.sftpSessions.Store(rfs.config, rfs)
+	}
+
+	return rfs
+}
+
+// Close closes the SFTP session.
+func (rfs *RemoteFileSystem) Close() error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.Close()
+}
+
+func (rfs *RemoteFileSystem) Chmod(path string, mode os.FileMode) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.Chmod(path, mode)
+}
+
+func (rfs *RemoteFileSystem) Chown(path string, uid, gid int) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.Chown(path, uid, gid)
+}
+
+func (rfs *RemoteFileSystem) Chtimes(path string, atime time.Time, mtime time.Time) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.Chtimes(path, atime, mtime)
+}
+
+func (rfs *RemoteFileSystem) Create(path string) (*RemoteFile, error) {
+	if rfs.err != nil {
+		return nil, rfs.err
+	}
+
+	file, err := rfs.sftp.Create(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RemoteFile{file}, nil
+}
+
+func (rfs *RemoteFileSystem) Getwd() (string, error) {
+	if rfs.err != nil {
+		return "", rfs.err
+	}
+
+	return rfs.sftp.Getwd()
+}
+
+func (rfs *RemoteFileSystem) Glob(pattern string) (matches []string, err error) {
+	if rfs.err != nil {
+		return nil, rfs.err
+	}
+
+	return rfs.sftp.Glob(pattern)
+}
+
+func (rfs *RemoteFileSystem) Link(oldname, newname string) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.Link(oldname, newname)
+}
+
+func (rfs *RemoteFileSystem) Lstat(path string) (os.FileInfo, error) {
+	if rfs.err != nil {
+		return nil, rfs.err
+	}
+
+	return rfs.sftp.Lstat(path)
+}
+
+func (rfs *RemoteFileSystem) Mkdir(path string) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.Mkdir(path)
+}
+
+func (rfs *RemoteFileSystem) MkdirAll(path string) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.MkdirAll(path)
+}
+
+func (rfs *RemoteFileSystem) Open(path string) (*RemoteFile, error) {
+	if rfs.err != nil {
+		return nil, rfs.err
+	}
+
+	file, err := rfs.sftp.Open(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RemoteFile{file}, nil
+}
+
+func (rfs *RemoteFileSystem) OpenFile(path string, f int) (*RemoteFile, error) {
+	if rfs.err != nil {
+		return nil, rfs.err
+	}
+
+	file, err := rfs.sftp.OpenFile(path, f)
+	if err != nil {
+		return nil, err
+	}
+
+	return &RemoteFile{file}, nil
+}
+
+func (rfs *RemoteFileSystem) PosixRename(oldname, newname string) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.PosixRename(oldname, newname)
+}
+
+func (rfs *RemoteFileSystem) ReadDir(path string) ([]os.FileInfo, error) {
+	if rfs.err != nil {
+		return nil, rfs.err
+	}
+
+	return rfs.sftp.ReadDir(path)
+}
+
+func (rfs *RemoteFileSystem) ReadLink(path string) (string, error) {
+	if rfs.err != nil {
+		return "", rfs.err
+	}
+
+	return rfs.sftp.ReadLink(path)
+}
+
+func (rfs *RemoteFileSystem) RealPath(path string) (string, error) {
+	if rfs.err != nil {
+		return "", rfs.err
+	}
+
+	return rfs.sftp.RealPath(path)
+}
+
+func (rfs *RemoteFileSystem) Remove(path string) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.Remove(path)
+}
+
+func (rfs *RemoteFileSystem) RemoveDirectory(path string) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.RemoveDirectory(path)
+}
+
+func (rfs *RemoteFileSystem) Rename(oldname, newname string) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.Rename(oldname, newname)
+}
+
+func (rfs *RemoteFileSystem) Stat(path string) (os.FileInfo, error) {
+	if rfs.err != nil {
+		return nil, rfs.err
+	}
+
+	return rfs.sftp.Stat(path)
+}
+
+type StatVFS struct {
+	*sftp.StatVFS
+}
+
+func (rfs *RemoteFileSystem) StatVFS(path string) (*StatVFS, error) {
+	if rfs.err != nil {
+		return nil, rfs.err
+	}
+
+	stat, err := rfs.sftp.StatVFS(path)
+	if err != nil {
+		return nil, err
+	}
+
+	return &StatVFS{stat}, nil
+}
+
+func (rfs *RemoteFileSystem) Symlink(oldname, newname string) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.Symlink(oldname, newname)
+}
+
+func (rfs *RemoteFileSystem) Truncate(path string, size int64) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.Truncate(path, size)
+}
+
+func (rfs *RemoteFileSystem) Wait() error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	return rfs.sftp.Wait()
+}
+
+func (rfs *RemoteFileSystem) Walk(root string) (*fs.Walker, error) {
+	if rfs.err != nil {
+		return nil, rfs.err
+	}
+
+	return rfs.sftp.Walk(root), nil
+}
+
+func (rfs *RemoteFileSystem) Upload(hostPath, remotePath string) (retErr error) {
+	multierr := newMultiError()
+	defer func() {
+		retErr = multierr.ErrorOrNil()
+	}()
+
+	hostFile, err := os.Open(hostPath)
+	if err != nil {
+		return multierr.Append(err)
+	}
+	defer multierr.AppendErrFunc(hostFile.Close)
+
+	remoteFile, err := rfs.sftp.OpenFile(remotePath, os.O_CREATE|os.O_WRONLY)
+	if err != nil {
+		return multierr.Append(err)
+	}
+	defer multierr.AppendErrFunc(remoteFile.Close)
+
+	_, err = remoteFile.ReadFrom(hostFile)
+	return multierr.Append(err)
+}
+
+func (rfs *RemoteFileSystem) Download(remotePath, hostPath string) (retErr error) {
+	multierr := newMultiError()
+	defer func() {
+		retErr = multierr.ErrorOrNil()
+	}()
+
+	remoteFile, err := rfs.sftp.Open(remotePath)
+	if err != nil {
+		return multierr.Append(err)
+	}
+	defer multierr.AppendErrFunc(remoteFile.Close)
+
+	hostFile, err := os.OpenFile(hostPath, os.O_CREATE|os.O_WRONLY, os.ModeAppend|os.ModePerm)
+	if err != nil {
+		return multierr.Append(err)
+	}
+	defer multierr.AppendErrFunc(hostFile.Close)
+
+	_, err = remoteFile.WriteTo(hostFile)
+	return multierr.Append(err)
+}
+
+func (rfs *RemoteFileSystem) ReadFile(name string) ([]byte, error) {
+	if rfs.err != nil {
+		return nil, rfs.err
+	}
+
+	f, err := rfs.sftp.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+
+	var size int
+	if info, err := f.Stat(); err == nil {
+		size64 := info.Size()
+		if int64(int(size64)) == size64 {
+			size = int(size64)
+		}
+	}
+	size++ // one byte for final read at EOF
+
+	// If a file claims a small size, read at least 512 bytes.
+	// In particular, files in Linux's /proc claim size 0 but
+	// then do not work right if read in small pieces,
+	// so an initial read of 1 byte would not work correctly.
+	if size < 512 {
+		size = 512
+	}
+
+	data := make([]byte, 0, size)
+	for {
+		if len(data) >= cap(data) {
+			d := append(data[:cap(data)], 0)
+			data = d[:len(data)]
+		}
+		n, err := f.Read(data[len(data):cap(data)])
+		data = data[:len(data)+n]
+		if err != nil {
+			if err == io.EOF {
+				err = nil
+			}
+			return data, err
+		}
+	}
+}
+
+func (rfs *RemoteFileSystem) WriteFile(name string, data []byte, perm os.FileMode) error {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
+	f, err := rfs.sftp.OpenFile(name, os.O_WRONLY|os.O_CREATE|os.O_TRUNC)
+	if err != nil {
+		return err
+	}
+	_, err = f.Write(data)
+	if err1 := f.Close(); err1 != nil && err == nil {
+		err = err1
+	}
+	return err
 }
