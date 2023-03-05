@@ -211,3 +211,49 @@ if err := client.Shell().SetStdio(&stdin, &stdout, &stderr).Start(); err != nil 
 fmt.Println(stdout.String())
 fmt.Println(stderr.String())
 ```
+
+
+
+## remote file operations
+
+Use  `sftp := client.Sftp()` to obtain a `RemoteFileSystem`. Use `sftp.Closer()` to close it after use, `sftp` can be passively closed using the `client.Close()` if it is used during the client lifetime. 
+
+Because it is designed to have a one-to-one configuration-to-instance relationship, you can obtain the same `RemoteFileSystem` everywhere with the same configuration. Here is an example of the code:
+
+```go
+// The following are the same Sftp specified by opts
+opts := []client.SftpOption{client.SftpMaxPacket(16384)}
+wd, err := client.Sftp(opts...).Getwd()
+// ...
+err := client.Sftp(opts...).Mkdir("path")
+// ...
+client.Sftp(opts...).Close()
+```
+
+
+
+### upload file
+
++ Get a RemoteFileSystem
+
+```go
+sftp := client.Sftp()
+```
+
++ Then upload local file to remote
+
+```go
+// upload
+if err := sftp.Upload("host/file/path"，"remote/file/path"); err != nil {
+  handleErr(err)
+}
+```
+
++ Close RemoteFileSystem
+
+```go
+if err := sftp.Close(); err != nil {
+  handleErr(err)
+}
+```
+
