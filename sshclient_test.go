@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -22,6 +23,7 @@ import (
 	"github.com/pkg/sftp"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
 )
 
 func TestDailWithPasswd(t *testing.T) {
@@ -313,6 +315,141 @@ func newTestSftpServerAndClient(t *testing.T) (*ssh.Server, *Client) {
 	return srv, cli
 }
 
+// TODO: test if new sftp error
+type clientSftpTestSuite struct {
+	suite.Suite
+
+	srv *ssh.Server
+	cli *Client
+
+	countSftpSession func() int
+}
+
+func (suite *clientSftpTestSuite) SetupSuite() {
+	srv, cli := newTestSftpServerAndClient(suite.T())
+	suite.srv = srv
+	suite.cli = cli
+
+	suite.countSftpSession = func() int {
+		cnt := 0
+		suite.cli.sftpSessions.Range(func(_, _ interface{}) bool {
+			cnt++
+			return true
+		})
+		return cnt
+	}
+}
+
+func (suite *clientSftpTestSuite) TearDownSuite() {
+	optsList := [][]SftpOption{
+		{SftpMaxConcurrentRequestsPerFile(16)},
+		{SftpMaxConcurrentRequestsPerFile(8)},
+	}
+	for _, opts := range optsList {
+		sftp := suite.cli.Sftp(opts...)
+		assert.NoError(suite.T(), sftp.err)
+	}
+	assert.GreaterOrEqual(suite.T(), len(optsList), suite.countSftpSession())
+
+	err := suite.cli.Close()
+	assert.NoError(suite.T(), err)
+	assert.Equal(suite.T(), 0, suite.countSftpSession())
+
+	err = suite.srv.Close()
+	assert.NoError(suite.T(), err)
+}
+
+func (suite *clientSftpTestSuite) TestSimple() {
+	sftp := suite.cli.Sftp()
+	assert.NoError(suite.T(), sftp.err)
+	assert.Equal(suite.T(), 1, suite.countSftpSession())
+	sftp.Close()
+	assert.Equal(suite.T(), 0, suite.countSftpSession())
+}
+
+func (suite *clientSftpTestSuite) TestMultSessions() {
+	optsList := [][]SftpOption{
+		{SftpMaxConcurrentRequestsPerFile(16)},
+		{SftpMaxConcurrentRequestsPerFile(8)},
+		{SftpMaxConcurrentRequestsPerFile(4)},
+		{SftpMaxConcurrentRequestsPerFile(4), SftpMaxPacket(1)},
+	}
+	sftps := make([]*RemoteFileSystem, len(optsList))
+	for i, opts := range optsList {
+		sftp := suite.cli.Sftp(opts...)
+		assert.NoError(suite.T(), sftp.err)
+		sftps[i] = sftp
+	}
+	assert.Equal(suite.T(), len(sftps), suite.countSftpSession())
+
+	for i, sftp := range sftps {
+		err := sftp.Close()
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), len(sftps)-i-1, suite.countSftpSession())
+	}
+}
+
+func (suite *clientSftpTestSuite) TestMultSessionsReuse() {
+	optsList := [][]SftpOption{
+		{SftpMaxConcurrentRequestsPerFile(16)},
+		{SftpMaxConcurrentRequestsPerFile(8)},
+		{SftpMaxConcurrentRequestsPerFile(4)},
+		{SftpMaxConcurrentRequestsPerFile(4), SftpMaxPacket(1)},
+	}
+
+	sftps := make([]*RemoteFileSystem, len(optsList))
+	for i, opts := range optsList {
+		sftp := suite.cli.Sftp(opts...)
+		assert.NoError(suite.T(), sftp.err)
+		sftps[i] = sftp
+	}
+	// reuse sftp session
+	for _, opts := range optsList {
+		sftp := suite.cli.Sftp(opts...)
+		assert.NoError(suite.T(), sftp.err)
+	}
+	assert.Equal(suite.T(), len(optsList), suite.countSftpSession())
+
+	for i, sftp := range sftps {
+		err := sftp.Close()
+		assert.NoError(suite.T(), err)
+		assert.Equal(suite.T(), len(sftps)-i-1, suite.countSftpSession())
+	}
+}
+
+func TestClientSftp(t *testing.T) {
+	suite.Run(t, new(clientSftpTestSuite))
+}
+
+func TestClientClose(t *testing.T) {
+	srv, cli := newTestSftpServerAndClient(t)
+
+	optsList := [][]SftpOption{
+		{SftpMaxConcurrentRequestsPerFile(16)},
+		{SftpMaxConcurrentRequestsPerFile(8)},
+	}
+	for _, opts := range optsList {
+		sftp := cli.Sftp(opts...)
+		assert.NoError(t, sftp.err)
+	}
+	countSftpSession := func() int {
+		cnt := 0
+		cli.sftpSessions.Range(func(_, _ interface{}) bool {
+			cnt++
+			return true
+		})
+		return cnt
+	}
+	assert.Equal(t, len(optsList), countSftpSession())
+
+	err := cli.Close()
+	assert.NoError(t, err)
+	assert.Equal(t, 0, countSftpSession())
+
+	err = srv.Shutdown(context.TODO())
+	assert.NoError(t, err)
+}
+
 func TestClientSftpGetwd(t *testing.T) {
 	srv, cli := newTestSftpServerAndClient(t)
 	defer srv.Shutdown(context.TODO())
@@ -441,4 +578,59 @@ func TestClientSftpDowload(t *testing.T) {
 	data, err := os.ReadFile(hostPath)
 	assert.NoError(t, err)
 	assert.Equal(t, "hello", string(data))
+}
+
+func TestClientSftpErrors(t *testing.T) {
+	srv, cli := newTestSftpServerAndClient(t)
+	defer srv.Shutdown(context.Background())
+	defer cli.Close()
+
+	sftp := cli.Sftp()
+	assert.NoError(t, sftp.err)
+	testErr := errors.New("test error")
+	sftp.err = testErr
+
+	assert.ErrorIs(t, testErr, sftp.Chmod("", 0))
+	assert.ErrorIs(t, testErr, sftp.Chown("", 0, 0))
+	assert.ErrorIs(t, testErr, sftp.Close())
+	assert.ErrorIs(t, testErr, sftp.Download("", ""))
+	assert.ErrorIs(t, testErr, sftp.Link("", ""))
+	assert.ErrorIs(t, testErr, sftp.Mkdir(""))
+	assert.ErrorIs(t, testErr, sftp.MkdirAll(""))
+	assert.ErrorIs(t, testErr, sftp.PosixRename("", ""))
+	assert.ErrorIs(t, testErr, sftp.Remove(""))
+	assert.ErrorIs(t, testErr, sftp.RemoveDirectory(""))
+	assert.ErrorIs(t, testErr, sftp.Rename("", ""))
+	assert.ErrorIs(t, testErr, sftp.Symlink("", ""))
+	assert.ErrorIs(t, testErr, sftp.Truncate("", 0))
+	assert.ErrorIs(t, testErr, sftp.Upload("", ""))
+	assert.ErrorIs(t, testErr, sftp.Wait())
+	assert.ErrorIs(t, testErr, sftp.WriteFile("", nil, 0))
+
+	_, err := sftp.Create("")
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.Getwd()
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.Glob("")
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.Lstat("")
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.Open("")
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.OpenFile("", 0)
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.ReadDir("")
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.ReadFile("")
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.ReadLink("")
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.RealPath("")
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.Stat("")
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.StatVFS("")
+	assert.ErrorIs(t, testErr, err)
+	_, err = sftp.Walk("")
+	assert.ErrorIs(t, testErr, err)
 }

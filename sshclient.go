@@ -442,8 +442,10 @@ func (c *Client) Sftp(opts ...SftpOption) *RemoteFileSystem {
 
 	sftpClient, err := sftp.NewClient(c.sshClient, config.sftpClientOptions()...)
 	rfs := &RemoteFileSystem{
-		sftp: sftpClient,
-		err:  err,
+		config: config,
+		sftp:   sftpClient,
+		cli:    c,
+		err:    err,
 	}
 
 	if rfs.err == nil {
@@ -458,6 +460,8 @@ func (rfs *RemoteFileSystem) Close() error {
 	if rfs.err != nil {
 		return rfs.err
 	}
+
+	rfs.cli.sftpSessions.Delete(rfs.config)
 
 	return rfs.sftp.Close()
 }
@@ -687,6 +691,10 @@ func (rfs *RemoteFileSystem) Walk(root string) (*fs.Walker, error) {
 }
 
 func (rfs *RemoteFileSystem) Upload(hostPath, remotePath string) (retErr error) {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
 	multierr := newMultiError()
 	defer func() {
 		retErr = multierr.ErrorOrNil()
@@ -709,6 +717,10 @@ func (rfs *RemoteFileSystem) Upload(hostPath, remotePath string) (retErr error) 
 }
 
 func (rfs *RemoteFileSystem) Download(remotePath, hostPath string) (retErr error) {
+	if rfs.err != nil {
+		return rfs.err
+	}
+
 	multierr := newMultiError()
 	defer func() {
 		retErr = multierr.ErrorOrNil()
