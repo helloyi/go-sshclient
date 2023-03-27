@@ -15,6 +15,7 @@ import (
 	"github.com/kr/fs"
 	"github.com/pkg/sftp"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/net/proxy"
 )
 
 type remoteScriptType byte
@@ -46,6 +47,40 @@ func DialWithPasswd(addr, user, passwd string) (*Client, error) {
 	}
 
 	return Dial("tcp", addr, config)
+}
+
+// ssh proxy client
+func ProxiedSSHClient(proxyAddress, sshServerAddress, user, passwd string) (*Client, error) {
+	config := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.Password(passwd),
+		},
+		HostKeyCallback: ssh.HostKeyCallback(func(hostname string, remote net.Addr, key ssh.PublicKey) error { return nil }),
+	}
+
+	c, er := proxiedSSHClient(proxyAddress, sshServerAddress, config)
+	return &Client{sshClient: c}, er
+}
+
+func proxiedSSHClient(proxyAddress, sshServerAddress string, sshConfig *ssh.ClientConfig) (*ssh.Client, error) {
+
+	dialer, err := proxy.SOCKS5("tcp", proxyAddress, nil, proxy.Direct)
+	if err != nil {
+		return nil, err
+	}
+
+	conn, err := dialer.Dial("tcp", sshServerAddress)
+	if err != nil {
+		return nil, err
+	}
+
+	c, chans, reqs, err := ssh.NewClientConn(conn, sshServerAddress, sshConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return ssh.NewClient(c, chans, reqs), nil
 }
 
 // DialWithKey starts a client connection to the given SSH server with key authmethod.
