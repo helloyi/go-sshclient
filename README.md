@@ -25,6 +25,15 @@ if err != nil {
 }
 defer client.Close()
 ```
++ socks5 proxy
+
+```go
+client, err := ProxiedSSHClient("proxyAddress","host:port", "username", "passwd")
+if err != nil {
+  handleErr(err)
+}
+defer client.Close()
+```
 
 + Dial with private key
 
