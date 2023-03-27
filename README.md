@@ -28,7 +28,7 @@ defer client.Close()
 + socks5 proxy
 
 ```go
-client, err := ProxiedSSHClient("proxyAddress","host:port", "username", "passwd")
+client, err := ProxiedSSHClient("proxyHost:proxyPort","host:port", "username", "passwd")
 if err != nil {
   handleErr(err)
 }

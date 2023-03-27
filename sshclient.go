@@ -49,7 +49,7 @@ func DialWithPasswd(addr, user, passwd string) (*Client, error) {
 	return Dial("tcp", addr, config)
 }
 
-// ssh proxy client
+// ssh socks5 proxy client
 func ProxiedSSHClient(proxyAddress, sshServerAddress, user, passwd string) (*Client, error) {
 	config := &ssh.ClientConfig{
 		User: user,
