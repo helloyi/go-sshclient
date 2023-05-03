@@ -139,6 +139,65 @@ func (c *Client) Dial(network, addr string, config *ssh.ClientConfig) (*Client, 
 	return &Client{sshClient: client}, nil
 }
 
+// DialWithPasswd initiates a Client to the addr from the remote host with passwd authmethod.
+func (c *Client) DialWithPasswd(addr, user, passwd string) (*Client, error) {
+	config := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.Password(passwd),
+		},
+		HostKeyCallback: ssh.HostKeyCallback(func(hostname string, remote net.Addr, key ssh.PublicKey) error { return nil }),
+	}
+
+	return c.Dial("tcp", addr, config)
+}
+
+// DialWithKey initiates a Client to the addr from the remote host with key authmethod.
+func (c *Client) DialWithKey(addr, user, keyfile string) (*Client, error) {
+	key, err := ioutil.ReadFile(keyfile)
+	if err != nil {
+		return nil, err
+	}
+
+	signer, err := ssh.ParsePrivateKey(key)
+	if err != nil {
+		return nil, err
+	}
+
+	config := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.HostKeyCallback(func(hostname string, remote net.Addr, key ssh.PublicKey) error { return nil }),
+	}
+
+	return c.Dial("tcp", addr, config)
+}
+
+// DialWithKeyWithPassphrase same as DialWithKey but with a passphrase to decrypt the private key
+func (c *Client) DialWithKeyWithPassphrase(addr, user, keyfile, passphrase string) (*Client, error) {
+	key, err := ioutil.ReadFile(keyfile)
+	if err != nil {
+		return nil, err
+	}
+
+	signer, err := ssh.ParsePrivateKeyWithPassphrase(key, []byte(passphrase))
+	if err != nil {
+		return nil, err
+	}
+
+	config := &ssh.ClientConfig{
+		User: user,
+		Auth: []ssh.AuthMethod{
+			ssh.PublicKeys(signer),
+		},
+		HostKeyCallback: ssh.HostKeyCallback(func(hostname string, remote net.Addr, key ssh.PublicKey) error { return nil }),
+	}
+
+	return c.Dial("tcp", addr, config)
+}
+
 // Cmd creates a RemoteScript that can run the command on the client. The cmd string is split on newlines and each line is executed separately.
 func (c *Client) Cmd(cmd string) *RemoteScript {
 	return &RemoteScript{
