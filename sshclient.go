@@ -765,7 +765,7 @@ func (rfs *RemoteFileSystem) Upload(hostPath, remotePath string) (retErr error) 
 	}
 	defer multierr.AppendErrFunc(hostFile.Close)
 
-	remoteFile, err := rfs.sftp.OpenFile(remotePath, os.O_CREATE|os.O_WRONLY)
+	remoteFile, err := rfs.sftp.OpenFile(remotePath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC)
 	if err != nil {
 		return multierr.Append(err)
 	}
@@ -791,7 +791,7 @@ func (rfs *RemoteFileSystem) Download(remotePath, hostPath string) (retErr error
 	}
 	defer multierr.AppendErrFunc(remoteFile.Close)
 
-	hostFile, err := os.OpenFile(hostPath, os.O_CREATE|os.O_WRONLY, os.ModeAppend|os.ModePerm)
+	hostFile, err := os.OpenFile(hostPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, os.ModeAppend|os.ModePerm)
 	if err != nil {
 		return multierr.Append(err)
 	}
