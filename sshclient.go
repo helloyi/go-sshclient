@@ -105,6 +105,20 @@ func Dial(network, addr string, config *ssh.ClientConfig) (*Client, error) {
 	return &Client{sshClient: sshClient}, nil
 }
 
+// DialWithConnection starts a client connection using existing net.Conn.
+func DialWithConnection(conn net.Conn, addr string, config *ssh.ClientConfig) (*Client, error) {
+	ncc, chans, reqs, err := ssh.NewClientConn(conn, addr, config)
+	if err != nil {
+		return nil, err
+	}
+
+	client := ssh.NewClient(ncc, chans, reqs)
+
+	return &Client{
+		client: client,
+	}, nil
+}
+
 // Close closes the underlying client network connection.
 func (c *Client) Close() error {
 	merr := newMultiError()
