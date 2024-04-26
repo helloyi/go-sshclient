@@ -80,6 +80,25 @@ if err != nil {
 defer client.Close()
 ```
 
++ Dial by SOCKS5 proxy
+
+```go
+client, err := DialWithPasswd(addr, user, passwd, WithDialFuncOption(func(network string, address string) (net.Conn, error) {
+    // get proxy address from env or config
+    proxyAddress := os.Getenv("socks5_proxy")
+    dial, err := proxy.SOCKS5(network, proxyAddress, nil, nil)
+    if err != nil {
+        t.Fatal(err)
+    }
+    c, err := dial.Dial(network, address)
+    return c, err
+}))
+if err != nil {
+    handleErr(err)
+}
+defer client.Close()
+```
+
 ## execute commmand
 
 + Don't care about output, calling Run
