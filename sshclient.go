@@ -112,10 +112,10 @@ func DialWithConnection(conn net.Conn, addr string, config *ssh.ClientConfig) (*
 		return nil, err
 	}
 
-	client := ssh.NewClient(ncc, chans, reqs)
+	sshClient := ssh.NewClient(ncc, chans, reqs)
 
 	return &Client{
-		client: client,
+		sshClient: sshClient,
 	}, nil
 }
 
